@@ -1,0 +1,112 @@
+name: run-windows
+
+# Some notebooks on windows-latest, so that the Windows FAILs in results/known_fails.csv come from GitHub, not from a
+# local computer. Set up as the "notebooks" workflow (Python 3.12, R release, the same R packages, simplydata from
+# requirements.txt), then scripts/run_notebooks.py with the chosen notebooks; the executed notebooks and their results
+# are uploaded as the artifact "windows-notebooks". Run by a push that changes .github/windows-notebooks.txt (the names
+# to run), or by hand once this file is on main (gh workflow run run-windows.yml --ref <branch> -f notebooks=27_fitting).
+on:
+  push:
+    paths: [".github/windows-notebooks.txt", ".github/workflows/run-windows.yml", "scripts/run_notebooks.py"]
+  workflow_dispatch:
+    inputs:
+      notebooks:
+        description: "notebook names separated by spaces"
+        default: 27_fitting
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 180
+    env:
+      SIMPLYDATA_TESTS_REQUIRE_R: "1"
+      MPLBACKEND: Agg
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: r-lib/actions/setup-r@v2
+        id: setup-r
+        with:
+          r-version: release
+
+      - name: Restore the R library
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.R_LIBS_USER }}
+          key: rlib-windows-v1-${{ steps.setup-r.outputs.installed-r-version }}-${{ github.run_id }}
+          restore-keys: rlib-windows-v1-${{ steps.setup-r.outputs.installed-r-version }}-
+
+      # The same R packages as the "notebooks" workflow (get_data.py writes every dataset not stored here), and qvalue.
+      - name: Install R packages
+        shell: Rscript {0}
+        run: |
+          pkgs <- c("survival", "vegan", "mice", "lme4", "betareg", "pscl", "car", "effectsize",
+          "emmeans", "pbkrtest", "lmerTest", "afex", "geepack", "sandwich", "performance", "mgcv", "MASS", "AER", "nnet",
+          "tseries", "urca", "lomb", "trend", "forecast", "changepoint",
+          "pwr", "Exact", "exact2x2", "nortest", "BSDA", "rstatix", "DescTools", "FSA", "PMCMRplus",
+          "multcompView", "TOSTER", "presize", "epiR", "pROC", "irr", "icr", "psych", "BlandAltmanLeh", "ppcor", "cocor",
+          "outliers", "EnvStats",
+          "drc", "segmented", "smatr", "mcr", "quantreg", "deming",
+          "nlme", "glmnet", "boot", "lmtest", "AICcmodavg",
+          "cmprsk", "adjustedCurves", "riskRegression", "KMsurv", "survRM2",
+          "metafor", "metadat", "meta",
+          "gsDesign", "powerSurvEpi", "pwrss",
+          "zCompositions", "compositions", "ca", "cluster",
+          "GPArotation", "lavaan",
+          "circular", "spdep", "spData", "sf", "gstat", "extRemes", "ismev", "sp", "ape",
+          "WeightIt", "MatchIt", "cobalt", "miceadds", "epitools", "mediation",
+          "agricolae", "blockrand", "survey", "BayesFactor", "carData", "signal",
+          "e1071", "WRS2", "Hmisc", "fitdistrplus", "onewaytests", "crank", "goftest", "kSamples", "randtests", "perm",
+          "fBasics", "multcomp", "VGAM", "rstanarm", "rstan", "posterior", "BiocManager")
+          lib <- Sys.getenv("R_LIBS_USER"); dir.create(lib, recursive = TRUE, showWarnings = FALSE)
+          miss <- setdiff(pkgs, rownames(installed.packages()))
+          if (length(miss)) install.packages(miss, lib = lib, repos = "https://cloud.r-project.org")
+          if (!requireNamespace("qvalue", quietly = TRUE)) BiocManager::install("qvalue", update = FALSE, ask = FALSE, lib = lib)
+          for (p in c(pkgs, "qvalue")) library(p, character.only = TRUE)
+
+      - name: R for rpy2 (R_HOME and R.dll on the PATH)
+        shell: bash
+        run: |
+          home=$(Rscript -e 'cat(normalizePath(R.home(), winslash = "/"))')
+          echo "R_HOME=$home" >> "$GITHUB_ENV"
+          cygpath -w "$home/bin/x64" >> "$GITHUB_PATH"
+
+      - name: Install the pinned Python packages
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Versions and machine
+        shell: bash
+        run: |
+          python -c "import platform; print(platform.platform(), platform.processor())"
+          cd notebooks && python -c "import checks, rpy2.robjects as ro; print(checks.simplydata_version()); print(ro.r('R.version.string')[0])"
+
+      - name: Run the chosen notebooks (fails on a notebook error or a new, unexplained FAIL)
+        shell: bash
+        env:
+          WANTED: ${{ github.event.inputs.notebooks }}
+        run: |
+          if [ -z "$WANTED" ]; then WANTED=$(grep -v '^#' .github/windows-notebooks.txt | tr -s '[:space:]' ' ' | xargs); fi
+          echo "notebooks: $WANTED"
+          python scripts/run_notebooks.py $WANTED
+
+      - name: Keep the executed notebooks and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-notebooks
+          path: |
+            notebooks/*.ipynb
+            results/*.csv
+            references/*.csv

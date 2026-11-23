@@ -1,0 +1,35 @@
+cff-version: 1.2.0
+message: "If you use these notebooks or their results, please cite them as below, and cite simplydata itself."
+title: "simplydata_tests: simplydata checked against published reference datasets and its parent packages"
+abstract: >-
+  Jupyter notebooks that run the Python package simplydata on published reference datasets
+  (NIST Statistical Reference Datasets with certified values, Student's sleep data, Anscombe's
+  quartet, Bliss's beetles, NMES 1988, the NCCTG lung cancer data and others) and compare every
+  number with the certified or printed value, with the package simplydata calls underneath
+  (pandas, NumPy, SciPy, statsmodels) and with an independent program (R, lifelines).
+type: software
+authors:
+  - given-names: Manish Prakash
+    family-names: Victor
+    orcid: "https://orcid.org/0000-0002-1409-5894"
+version: 0.1.0
+date-released: "2026-11-20"
+license: MIT
+repository-code: "https://github.com/bioforkgithub/simplydata_tests"
+keywords:
+  - statistical software
+  - software validation
+  - reproducibility
+  - NIST StRD
+  - Python
+  - R
+references:
+  - type: software
+    title: "simplydata: simple words for data science in Python"
+    authors:
+      - given-names: Manish Prakash
+        family-names: Victor
+        orcid: "https://orcid.org/0000-0002-1409-5894"
+    version: 0.2.0
+    doi: "10.5281/zenodo.24210045"
+    repository-code: "https://github.com/bioforkgithub/simplydata"

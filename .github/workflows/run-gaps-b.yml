@@ -1,0 +1,172 @@
+name: run-gaps-b
+
+# Notebooks 25 to 31 (real-data checks of the words in the groups Models, Fitting, Patterns across columns,
+# Forecasts, Smoothing and trend, Survival, Combining studies, Planning a study, Planning and surveys), one job
+# per notebook, against simplydata main at commit 3fd3b85 (pinned here and in requirements.txt).
+# Each job runs its notebook, writes the runner's CPU into its results file (column "ran on"; some results
+# near a tolerance depend on the CPU, see FINDINGS.md B1) and keeps the notebook and results as an artifact.
+# While the notebooks were written this ran on every push to gaps-b; now only by hand (the executed notebooks and
+# their results are committed, and the full check runs in notebooks.yml).
+on:
+  workflow_dispatch:
+    inputs:
+      notebook:
+        description: "Only this notebook number (25 to 31); empty runs all"
+        required: false
+        default: ""
+
+jobs:
+  notebook:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        number: ["25", "26", "27", "28", "29", "30", "31", "32"]
+    env:
+      SIMPLYDATA_TESTS_REQUIRE_R: "1"
+      SIMPLYDATA_TESTS_SIMPLYDATA_COMMIT: "3fd3b85"
+      MPLBACKEND: Agg
+      OPENBLAS_CORETYPE: Haswell
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # On a push, only the notebooks that the push changed are run (each notebook runs once, not on every push).
+      - name: Is this notebook there (and asked for)?
+        id: pick
+        run: |
+          file=$(ls notebooks/${{ matrix.number }}_*.ipynb 2>/dev/null | head -1)
+          wanted="${{ github.event.inputs.notebook }}"
+          changed=yes
+          if [ "${{ github.event_name }}" = "push" ] && [ -n "$file" ]; then
+            if git cat-file -e "${{ github.event.before }}" 2>/dev/null; then
+              git diff --name-only "${{ github.event.before }}" HEAD | grep -q "^$file$" || changed=no
+            fi
+          fi
+          if [ -n "$file" ] && [ "$changed" = yes ] && { [ -z "$wanted" ] || [ "$wanted" = "${{ matrix.number }}" ]; }; then
+            echo "name=$(basename "$file" .ipynb)" >> "$GITHUB_OUTPUT"; echo "run=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=no" >> "$GITHUB_OUTPUT"; echo "No notebook ${{ matrix.number }} to run."
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.pick.outputs.run == 'yes'
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: r-lib/actions/setup-r@v2
+        if: steps.pick.outputs.run == 'yes'
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Install system libraries for R
+        if: steps.pick.outputs.run == 'yes'
+        run: >-
+          sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libuv1-dev libssl-dev libxml2-dev
+          libfontconfig1-dev libharfbuzz-dev libfribidi-dev libfreetype6-dev libpng-dev libtiff5-dev libjpeg-dev
+          libudunits2-dev libgdal-dev libgeos-dev libproj-dev libgmp-dev libmpfr-dev libglpk-dev cmake
+
+      - name: Cache the R library
+        if: steps.pick.outputs.run == 'yes'
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.R_LIBS_USER }}
+          key: rlib-gaps-b-${{ runner.os }}-${{ hashFiles('.github/workflows/run-gaps-b.yml') }}
+          restore-keys: rlib-gaps-b-${{ runner.os }}-
+
+      # simplydata's own R packages, the reference packages of notebooks 25 to 31, and the packages whose
+      # datasets and help-page examples these notebooks reproduce. Only missing ones are installed.
+      - name: Install R packages
+        if: steps.pick.outputs.run == 'yes'
+        run: >-
+          Rscript -e 'pkgs <- c("survival", "vegan", "mice", "lme4", "betareg", "pscl", "car", "carData",
+          "effectsize", "emmeans", "pbkrtest", "lmerTest", "afex", "geepack", "sandwich", "performance", "mgcv",
+          "MASS", "nnet", "tseries", "urca", "lomb", "trend", "forecast", "changepoint", "pwr", "TOSTER",
+          "presize", "epiR", "psych", "drc", "segmented", "smatr", "mcr", "quantreg", "deming", "nlme",
+          "glmnet", "boot", "lmtest", "AICcmodavg", "cmprsk", "adjustedCurves", "riskRegression", "KMsurv",
+          "survRM2", "metafor", "metadat", "meta", "gsDesign", "powerSurvEpi", "pwrss", "zCompositions",
+          "compositions", "ca", "cluster", "GPArotation", "lavaan", "spdep", "spData", "sf", "agricolae",
+          "blockrand", "survey", "signal", "rstanarm", "AER", "circular", "sp", "ismev", "MatchIt", "mediation",
+          "BayesFactor", "icr", "BiocManager");
+          lib <- Sys.getenv("R_LIBS_USER"); dir.create(lib, recursive = TRUE, showWarnings = FALSE);
+          missing <- setdiff(pkgs, rownames(installed.packages()));
+          if (length(missing)) install.packages(missing, lib = lib);
+          if (!requireNamespace("qvalue", quietly = TRUE)) BiocManager::install("qvalue", update = FALSE, ask = FALSE, lib = lib);
+          for (p in c(pkgs, "qvalue")) library(p, character.only = TRUE)'
+
+      - name: R library path for rpy2
+        if: steps.pick.outputs.run == 'yes'
+        run: echo "LD_LIBRARY_PATH=$(R RHOME)/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Install the pinned Python packages, with simplydata at 3fd3b85
+        if: steps.pick.outputs.run == 'yes'
+        run: |
+          python -m pip install --upgrade pip
+          grep -v '^simplydata' requirements.txt > /tmp/requirements-gaps-b.txt
+          python -m pip install -r /tmp/requirements-gaps-b.txt
+          python -m pip install "simplydata[r] @ git+https://github.com/bioforkgithub/simplydata@3fd3b8591ecc5165b8b85e18f76f199f1876071a"
+
+      - name: Machine
+        if: steps.pick.outputs.run == 'yes'
+        run: |
+          grep -m1 "model name" /proc/cpuinfo
+          cd notebooks && python -c "import checks; print(checks.simplydata_version())"
+
+      # The datasets this repository does not host (GPL/LGPL copies, a copyrighted supplement, data without a
+      # stated licence) are written to data/fetched/ from the R packages that ship them and the publisher's
+      # files; every data file is then checked against data/SHA256SUMS.
+      - name: Get the datasets not stored here, and check every data file's checksum
+        if: steps.pick.outputs.run == 'yes'
+        run: python scripts/get_data.py
+
+      - name: Make the reference values and data (scripts/references/<notebook>.py)
+        if: steps.pick.outputs.run == 'yes'
+        run: python scripts/references/${{ steps.pick.outputs.name }}.py
+
+      - name: Run the notebook
+        if: steps.pick.outputs.run == 'yes'
+        run: |
+          python - <<'EOF'
+          import sys, nbformat
+          from nbclient import NotebookClient
+          name = "${{ steps.pick.outputs.name }}"
+          nb = nbformat.read(f"notebooks/{name}.ipynb", as_version=4)
+          ok = True
+          try:
+              NotebookClient(nb, timeout=3000, kernel_name="python3",
+                             resources={"metadata": {"path": "notebooks"}}).execute()
+          except Exception as problem:
+              print(str(problem)[:4000]); ok = False
+          nbformat.write(nb, f"notebooks/{name}.ipynb")
+          sys.exit(0 if ok else 1)
+          EOF
+
+      - name: Write where it ran into the results file
+        if: always() && steps.pick.outputs.run == 'yes'
+        run: |
+          cpu=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs)
+          python - "$cpu" <<'EOF'
+          import sys, glob, pandas as pd
+          for f in glob.glob("results/${{ steps.pick.outputs.name }}.csv"):
+              t = pd.read_csv(f)
+              t["ran on"] = f"GitHub Actions ubuntu-latest, {sys.argv[1]}"
+              t.to_csv(f, index=False, float_format="%.17g")
+              print(f, len(t), "rows;", t["status"].value_counts().to_dict())
+          EOF
+
+      - name: Keep the notebook and its results
+        if: always() && steps.pick.outputs.run == 'yes'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gaps-b-${{ steps.pick.outputs.name }}
+          path: |
+            notebooks/${{ steps.pick.outputs.name }}.ipynb
+            results/${{ steps.pick.outputs.name }}.csv
+            references/${{ steps.pick.outputs.name }}.csv

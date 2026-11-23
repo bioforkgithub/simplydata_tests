@@ -1,0 +1,126 @@
+name: notebooks
+
+# Re-run every notebook from top to bottom with R installed; fail if any notebook stops with an
+# error or a comparison FAILs that is not explained in FINDINGS.md (results/known_fails.csv). The
+# executed notebooks and the results are kept as an artifact.
+on:
+  push:
+    # gaps-a, gaps-b, convert-00-08, convert-09-17 and second-pass (with its per-notebook branches) run their notebooks
+    # per notebook in their own workflows; the full run is on the pull request
+    branches-ignore: [gaps-a, gaps-b, convert-00-08, convert-09-17, second-pass, "second-pass-*"]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * 1"   # Mondays, to notice changes in the packages underneath
+
+jobs:
+  run-notebooks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      SIMPLYDATA_TESTS_REQUIRE_R: "1"
+      MPLBACKEND: Agg
+      # The same floating-point path on every runner machine: OpenBLAS (under NumPy and SciPy) otherwise
+      # picks CPU-specific kernels and threads, and results that lie near a tolerance move between runs.
+      OPENBLAS_CORETYPE: Haswell
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      # System libraries some R packages build against or load on Linux (as in simplydata's own CI)
+      - name: Install system libraries for R
+        run: >-
+          sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libuv1-dev libssl-dev libxml2-dev
+          libfontconfig1-dev libharfbuzz-dev libfribidi-dev libfreetype6-dev libpng-dev libtiff5-dev libjpeg-dev
+          libudunits2-dev libgdal-dev libgeos-dev libproj-dev libgmp-dev libmpfr-dev libglpk-dev cmake
+
+      # The R packages simplydata calls (its tests/conftest.py R_PACKAGES) and the reference packages the
+      # notebooks run themselves. The step fails when any package does not load.
+      - name: Install R packages
+        run: >-
+          Rscript -e 'pkgs <- c("survival", "vegan", "mice", "lme4", "betareg", "pscl", "car", "effectsize",
+          "emmeans", "pbkrtest", "lmerTest", "afex", "geepack", "sandwich", "performance", "mgcv", "MASS", "AER", "nnet",
+          "tseries", "urca", "lomb", "trend", "forecast", "changepoint",
+          "pwr", "Exact", "exact2x2", "nortest", "BSDA", "rstatix", "DescTools", "FSA", "PMCMRplus",
+          "multcompView", "TOSTER", "presize", "epiR", "pROC", "irr", "icr", "psych", "BlandAltmanLeh", "ppcor", "cocor",
+          "outliers", "EnvStats",
+          "drc", "segmented", "smatr", "mcr", "quantreg", "deming",
+          "nlme", "glmnet", "boot", "lmtest", "AICcmodavg",
+          "cmprsk", "adjustedCurves", "riskRegression", "KMsurv", "survRM2",
+          "metafor", "metadat", "meta",
+          "gsDesign", "powerSurvEpi", "pwrss",
+          "zCompositions", "compositions", "ca", "cluster",
+          "GPArotation", "lavaan",
+          "circular", "spdep", "spData", "sf", "gstat", "extRemes", "ismev", "sp", "ape",
+          "WeightIt", "MatchIt", "cobalt", "miceadds", "epitools", "mediation",
+          "agricolae", "blockrand", "survey", "BayesFactor", "carData", "signal",
+          "e1071", "WRS2", "Hmisc", "fitdistrplus", "onewaytests", "crank", "goftest", "kSamples", "randtests", "perm",
+          "fBasics", "multcomp", "VGAM");
+          install.packages(pkgs); for (p in pkgs) library(p, character.only = TRUE)'
+
+      # Bayesian models (notebook 17) run on rstanarm; binary builds come from Posit's public package manager.
+      - name: Install R packages for Bayesian models
+        run: >-
+          Rscript -e 'pkgs <- c("rstanarm", "rstan", "posterior"); install.packages(pkgs);
+          for (p in pkgs) library(p, character.only = TRUE)'
+
+      # qvalue (Storey's q-values, notebook 14) is on Bioconductor, not CRAN.
+      - name: Install Bioconductor packages
+        run: >-
+          Rscript -e 'install.packages("BiocManager"); tryCatch(BiocManager::install("qvalue", update = FALSE,
+          ask = FALSE), error = function(e) BiocManager::install("qvalue", version = "devel", update = FALSE,
+          ask = FALSE)); library(qvalue)'
+
+      - name: R library path for rpy2
+        run: echo "LD_LIBRARY_PATH=$(R RHOME)/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Install the pinned Python packages
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Versions
+        run: |
+          R --version | head -1
+          Rscript -e 'cat("MASS", as.character(packageVersion("MASS")), "survival", as.character(packageVersion("survival")), "\n")'
+          cd notebooks && python -c "import checks, rpy2.robjects as ro; print(checks.simplydata_version()); print(ro.r('R.version.string')[0])"
+
+      - name: Machine (results near a tolerance can depend on it)
+        run: |
+          grep -m1 "model name" /proc/cpuinfo
+          python -m pip install --quiet threadpoolctl
+          python -c "import numpy, scipy.linalg, threadpoolctl, json; print(json.dumps([{k: i.get(k) for k in ('internal_api', 'version', 'architecture', 'num_threads')} for i in threadpoolctl.threadpool_info()]))"
+
+      # The datasets this repository does not host (GPL/LGPL copies, a copyrighted supplement, data without a
+      # stated licence) are written to data/fetched/ from the R packages that ship them and the publisher's
+      # files; every data file is then checked against data/SHA256SUMS.
+      - name: Get the datasets not stored here, and check every data file's checksum
+        run: python scripts/get_data.py
+
+      - name: Test the comparison helpers (notebooks/checks.py)
+        run: python tests/test_checks.py
+
+      - name: Run all notebooks (fails on a notebook error or a new, unexplained FAIL)
+        run: python scripts/run_notebooks.py
+
+      - name: Keep the executed notebooks and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: executed-notebooks
+          path: |
+            notebooks/*.ipynb
+            results/*.csv
+            references/*.csv

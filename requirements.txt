@@ -1,0 +1,17 @@
+# The versions the notebooks were run with (see each notebook's first output).
+# R parts also need R itself (4.x) with its recommended packages (MASS, survival); see README.md.
+# simplydata main at commit a5a8ff0 (PR #42: the last words the "waiting for word" checks waited for; not yet released on PyPI)
+simplydata[r] @ git+https://github.com/bioforkgithub/simplydata@a5a8ff03fb5518e068e7552473b8f62d5092ebe8
+numpy==2.5.5
+pandas==2.3.3
+scipy==1.18.1
+statsmodels==0.15.0
+lifelines==0.30.3
+matplotlib==3.11.2
+seaborn==0.13.2
+rpy2==3.6.9
+# running and opening the notebooks
+ipykernel==7.4.0
+nbclient==0.11.0
+nbformat==5.11.1
+jupyterlab==4.6.6

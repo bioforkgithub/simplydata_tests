@@ -1,0 +1,154 @@
+name: run-second-pass
+
+# The second pass: the checks that waited for a simplydata word (merged in simplydata PR #39, main 3fd3b85) are
+# switched on. Any notebook 01 to 32, one job per notebook, side by side, with simplydata from requirements.txt.
+# Each job runs the notebook's reference script (scripts/references/<notebook>.py), then the notebook from top to
+# bottom with R, lists its FAILs against results/known_fails.csv, and uploads the executed notebook, its results and
+# its reference file. The full check of every notebook is the "notebooks" workflow, which runs on the pull request.
+# Run by hand (gh workflow run run-second-pass.yml --ref <branch> -f notebooks="05_survival 11_communities"), or by a
+# push to second-pass or a second-pass-* branch that changes .github/second-pass-notebooks.txt (the names to run).
+on:
+  push:
+    branches: [second-pass, "second-pass-*"]
+    paths: [".github/second-pass-notebooks.txt"]
+  workflow_dispatch:
+    inputs:
+      notebooks:
+        description: 'notebook names separated by spaces, or "all"'
+        default: all
+
+jobs:
+  pick:
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.pick.outputs.list }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: pick
+        env:
+          WANTED: ${{ github.event.inputs.notebooks }}
+        run: |
+          all=$(ls notebooks | grep -E '^(0[1-9]|[12][0-9]|3[0-2])_.*\.ipynb$' | sed 's/\.ipynb$//')
+          if [ "${{ github.event_name }}" = "push" ]; then WANTED=$(grep -v '^#' .github/second-pass-notebooks.txt | tr -s '[:space:]' ' ' | xargs); fi
+          if [ "$WANTED" = "all" ]; then chosen="$all"; else chosen=$(echo "$WANTED" | tr ' ' '\n' | sed 's/\.ipynb$//'); fi
+          echo "list=$(echo "$chosen" | grep . | jq -R . | jq -cs .)" >> "$GITHUB_OUTPUT"
+          echo "chosen: $chosen"
+
+  notebook:
+    needs: pick
+    if: needs.pick.outputs.list != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        notebook: ${{ fromJson(needs.pick.outputs.list) }}
+    env:
+      SIMPLYDATA_TESTS_REQUIRE_R: "1"
+      MPLBACKEND: Agg
+      OPENBLAS_CORETYPE: Haswell
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: r-lib/actions/setup-r@v2
+        id: setup-r
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Install system libraries for R
+        run: >-
+          sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libuv1-dev libssl-dev libxml2-dev
+          libfontconfig1-dev libharfbuzz-dev libfribidi-dev libfreetype6-dev libpng-dev libtiff5-dev libjpeg-dev
+          libudunits2-dev libgdal-dev libgeos-dev libproj-dev libgmp-dev libmpfr-dev libglpk-dev cmake
+
+      # The R library is kept between runs (only packages that are missing are installed).
+      - name: Restore the R library
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.R_LIBS_USER }}
+          key: rlib-second-pass-v1-${{ steps.setup-r.outputs.installed-r-version }}-${{ github.run_id }}-${{ matrix.notebook }}
+          restore-keys: rlib-second-pass-v1-${{ steps.setup-r.outputs.installed-r-version }}-
+
+      # The same R packages as the "notebooks" workflow (simplydata's own and the reference packages), and qvalue.
+      - name: Install R packages
+        run: >-
+          Rscript -e 'pkgs <- c("survival", "vegan", "mice", "lme4", "betareg", "pscl", "car", "effectsize",
+          "emmeans", "pbkrtest", "lmerTest", "afex", "geepack", "sandwich", "performance", "mgcv", "MASS", "AER", "nnet",
+          "tseries", "urca", "lomb", "trend", "forecast", "changepoint",
+          "pwr", "Exact", "exact2x2", "nortest", "BSDA", "rstatix", "DescTools", "FSA", "PMCMRplus",
+          "multcompView", "TOSTER", "presize", "epiR", "pROC", "irr", "icr", "psych", "BlandAltmanLeh", "ppcor", "cocor",
+          "outliers", "EnvStats",
+          "drc", "segmented", "smatr", "mcr", "quantreg", "deming",
+          "nlme", "glmnet", "boot", "lmtest", "AICcmodavg",
+          "cmprsk", "adjustedCurves", "riskRegression", "KMsurv", "survRM2",
+          "metafor", "metadat", "meta",
+          "gsDesign", "powerSurvEpi", "pwrss",
+          "zCompositions", "compositions", "ca", "cluster",
+          "GPArotation", "lavaan",
+          "circular", "spdep", "spData", "sf", "gstat", "extRemes", "ismev", "sp", "ape",
+          "WeightIt", "MatchIt", "cobalt", "miceadds", "epitools", "mediation",
+          "agricolae", "blockrand", "survey", "BayesFactor", "carData", "signal",
+          "e1071", "WRS2", "Hmisc", "fitdistrplus", "onewaytests", "crank", "goftest", "kSamples", "randtests", "perm",
+          "fBasics", "multcomp", "VGAM", "rstanarm", "rstan", "posterior", "BiocManager");
+          lib <- Sys.getenv("R_LIBS_USER"); dir.create(lib, recursive = TRUE, showWarnings = FALSE);
+          miss <- setdiff(pkgs, rownames(installed.packages())); if (length(miss)) install.packages(miss, lib = lib);
+          if (!requireNamespace("qvalue", quietly = TRUE)) BiocManager::install("qvalue", update = FALSE, ask = FALSE, lib = lib);
+          for (p in c(pkgs, "qvalue")) library(p, character.only = TRUE)'
+
+      - name: R library path for rpy2
+        run: echo "LD_LIBRARY_PATH=$(R RHOME)/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Install the pinned Python packages (simplydata as in requirements.txt)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Versions and machine
+        run: |
+          grep -m1 "model name" /proc/cpuinfo
+          cd notebooks && python -c "import checks, rpy2.robjects as ro; print(checks.simplydata_version()); print(ro.r('R.version.string')[0])"
+
+      - name: Get the datasets not stored here, and check every data file's checksum
+        run: python scripts/get_data.py
+
+      - name: Run the reference script and the notebook
+        run: |
+          python -c "import sys; sys.path.insert(0, 'scripts'); from pathlib import Path; import run_notebooks as r; sys.exit(0 if r.run(Path('notebooks/${{ matrix.notebook }}.ipynb')) else 1)"
+
+      - name: Results, and the FAILs not explained in results/known_fails.csv
+        if: always()
+        run: |
+          python - <<'EOF'
+          import sys
+          from pathlib import Path
+          import pandas as pd
+          sys.path.insert(0, "scripts")
+          import run_notebooks as r
+          path = Path("results/${{ matrix.notebook }}.csv")
+          if not path.exists():
+              sys.exit("no results file")
+          t = pd.read_csv(path)
+          print(t["status"].value_counts().to_string())
+          if "result" in t.columns:
+              print(t["result"].value_counts().to_string())
+          sys.exit(1 if r.check_against_known(t) else 0)
+          EOF
+
+      - name: Keep the executed notebook, its results and its references
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: second-pass-${{ matrix.notebook }}
+          path: |
+            notebooks/${{ matrix.notebook }}.ipynb
+            results/${{ matrix.notebook }}.csv
+            references/${{ matrix.notebook }}.csv

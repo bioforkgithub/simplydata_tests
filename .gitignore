@@ -1,0 +1,31 @@
+# Jupyter
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+
+# editors and systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# data written by scripts/references/*.py for notebooks 18 to 24 (read from R packages at run time)
+references/data/
+
+# datasets not hosted here: written by scripts/get_data.py from their original source (see data/SOURCES.md)
+data/fetched/

@@ -1,0 +1,132 @@
+name: run-convert-00-08
+
+# Notebooks 01 to 08 in the simplydata-only layout (their reference values from scripts/references/), one job per
+# notebook, so they run side by side. Each job runs its notebook from top to bottom
+# with R and uploads the executed notebook and its results file. The full check of every notebook (and of the
+# FAILs explained in FINDINGS.md) is the "notebooks" workflow, which runs on the pull request.
+# A push runs only the notebooks 01 to 08 that the push changed; a manual run takes a list (or "all").
+on:
+  push:
+    branches: [convert-00-08]
+    paths: ["notebooks/0[1-8]_*.ipynb", "scripts/references/0[1-8]_*.py", "scripts/references/common.py", ".github/workflows/run-convert-00-08.yml"]
+  workflow_dispatch:
+    inputs:
+      notebooks:
+        description: 'notebook names separated by spaces, or "all"'
+        default: all
+
+jobs:
+  pick:
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.pick.outputs.list }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: pick
+        env:
+          WANTED: ${{ github.event.inputs.notebooks }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          all=$(ls notebooks | grep -E '^0[1-8]_.*\.ipynb$' | sed 's/\.ipynb$//')
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "$WANTED" = "all" ]; then chosen="$all"; else chosen=$(echo "$WANTED" | tr ' ' '\n'); fi
+          elif git cat-file -e "$BEFORE" 2>/dev/null; then
+            chosen=$(git diff --name-only "$BEFORE" HEAD | grep -E '^(notebooks|scripts/references)/0[1-8]_.*\.(ipynb|py)$' | sed 's#^.*/##; s/\.\(ipynb\|py\)$//' | sort -u)
+          else
+            chosen="$all"
+          fi
+          echo "list=$(echo "$chosen" | grep . | jq -R . | jq -cs .)" >> "$GITHUB_OUTPUT"
+          echo "chosen: $chosen"
+
+  notebook:
+    needs: pick
+    if: needs.pick.outputs.list != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        notebook: ${{ fromJson(needs.pick.outputs.list) }}
+    env:
+      SIMPLYDATA_TESTS_REQUIRE_R: "1"
+      MPLBACKEND: Agg
+      OPENBLAS_CORETYPE: Haswell
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: r-lib/actions/setup-r@v2
+        id: setup-r
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Install system libraries for R
+        run: >-
+          sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libuv1-dev libssl-dev libxml2-dev
+          libfontconfig1-dev libharfbuzz-dev libfribidi-dev libfreetype6-dev libpng-dev libtiff5-dev libjpeg-dev
+          libudunits2-dev libgdal-dev libgeos-dev libproj-dev libgmp-dev libmpfr-dev libglpk-dev cmake
+
+      # The R library is kept between runs (only packages that are missing are installed).
+      - name: Restore the R library
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.R_LIBS_USER }}
+          key: rlib-convert-00-08-v1-${{ steps.setup-r.outputs.installed-r-version }}-${{ github.run_id }}-${{ matrix.notebook }}
+          restore-keys: rlib-convert-00-08-v1-${{ steps.setup-r.outputs.installed-r-version }}-
+
+      - name: Install R packages
+        run: >-
+          Rscript -e 'pkgs <- c("survival", "vegan", "mice", "lme4", "car", "effectsize", "emmeans", "afex", "MASS",
+          "nnet", "tseries", "pwr", "Exact", "exact2x2", "nortest", "BSDA", "rstatix", "DescTools", "FSA", "PMCMRplus",
+          "multcompView", "TOSTER", "presize", "epiR", "pROC", "irr", "icr", "psych", "BlandAltmanLeh", "ppcor", "cocor",
+          "outliers", "EnvStats", "drc", "boot", "metafor", "circular", "gstat", "extRemes", "ismev", "sp", "sf",
+          "survey", "BayesFactor", "epitools", "e1071", "WRS2", "Hmisc", "fitdistrplus", "onewaytests", "crank",
+          "goftest", "kSamples", "randtests", "perm", "fBasics", "multcomp", "nlme", "VGAM", "mcr", "WeightIt", "MatchIt",
+          "cobalt", "sandwich", "lmtest", "meta", "metadat", "AER", "KMsurv", "lavaan", "smatr", "mediation", "BiocManager");
+          miss <- setdiff(pkgs, rownames(installed.packages())); if (length(miss)) install.packages(miss);
+          if (!requireNamespace("qvalue", quietly = TRUE)) BiocManager::install("qvalue", update = FALSE, ask = FALSE);
+          for (p in c(pkgs, "qvalue")) library(p, character.only = TRUE)'
+
+      - name: R library path for rpy2
+        run: echo "LD_LIBRARY_PATH=$(R RHOME)/lib:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Install the pinned Python packages
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Versions and machine
+        run: |
+          grep -m1 "model name" /proc/cpuinfo
+          cd notebooks && python -c "import checks, rpy2.robjects as ro; print(checks.simplydata_version()); print(ro.r('R.version.string')[0])"
+
+      # The datasets this repository does not host (GPL/LGPL copies, a copyrighted supplement, data without a
+      # stated licence) are written to data/fetched/ from the R packages that ship them and the publisher's
+      # files; every data file is then checked against data/SHA256SUMS.
+      - name: Get the datasets not stored here, and check every data file's checksum
+        run: python scripts/get_data.py
+
+      - name: Run the notebook
+        run: |
+          python -c "import sys; sys.path.insert(0, 'scripts'); from pathlib import Path; import run_notebooks as r; sys.exit(0 if r.run(Path('notebooks/${{ matrix.notebook }}.ipynb')) else 1)"
+          python -c "import pandas as pd; t = pd.read_csv('results/${{ matrix.notebook }}.csv'); print(t['status'].value_counts().to_string()); print(t.loc[t['status'] == 'FAIL', ['dataset', 'method', 'quantity', 'simplydata', 'reference', 'reference source']].to_string())"
+
+      - name: Keep the executed notebook and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: convert-${{ matrix.notebook }}
+          path: |
+            notebooks/${{ matrix.notebook }}.ipynb
+            results/${{ matrix.notebook }}.csv
+            references/${{ matrix.notebook }}.csv

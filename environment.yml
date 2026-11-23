@@ -1,0 +1,65 @@
+# conda env create -f environment.yml && conda activate simplydata_tests
+# R and the R packages the notebooks and simplydata call come from conda-forge and bioconda; the Python packages from PyPI,
+# pinned as in requirements.txt. presize, pwrss, survRM2, blockrand and icr (Krippendorff's alpha, simplydata 3fd3b85) are on CRAN only, and smatr and mcr (read by
+# scripts/get_data.py) are installed from CRAN too: in R,
+# install.packages(c("presize", "pwrss", "survRM2", "blockrand", "smatr", "mcr", "icr")).
+name: simplydata_tests
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.12
+  - r-base>=4.3
+  - r-mass
+  - r-aer
+  - r-lme4
+  - r-sp
+  - r-survival
+  - r-metafor
+  - r-metadat
+  - r-meta
+  - r-kmsurv
+  - r-cmprsk
+  - r-adjustedcurves
+  - r-riskregression
+  - r-pwr
+  - r-toster
+  - r-gsdesign
+  - r-powersurvepi
+  - r-vegan
+  - r-zcompositions
+  - r-compositions
+  - r-cluster
+  - r-lavaan
+  - r-psych
+  - r-gparotation
+  - r-circular
+  - r-spdep
+  - r-spdata
+  - r-sf
+  - r-gstat
+  - r-extremes
+  - r-ismev
+  - r-ape
+  - r-forecast
+  - r-pmcmrplus
+  - r-fsa
+  - r-drc
+  - r-car
+  - r-survey
+  - r-agricolae
+  - r-weightit
+  - r-matchit
+  - r-cobalt
+  - r-sandwich
+  - r-lmtest
+  - r-mediation
+  - r-epir
+  - r-epitools
+  - r-bayesfactor
+  - r-rstanarm
+  - r-posterior
+  - bioconductor-qvalue
+  - pip
+  - pip:
+      - -r requirements.txt

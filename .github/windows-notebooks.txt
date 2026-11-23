@@ -1,0 +1,3 @@
+# Notebooks the "run-windows" workflow runs on windows-latest when this file changes on a push (names separated by
+# spaces or lines). Its results are "the Windows run" for known_fails.csv.
+27_fitting
