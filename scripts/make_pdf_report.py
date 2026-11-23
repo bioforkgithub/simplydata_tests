@@ -87,8 +87,12 @@ def references() -> list[dict]:
 
 
 def word_of(method: str) -> str:
-    """The simplydata word a method label starts with ("compare_averages_of (ANOVA)" -> compare_averages_of)."""
-    return re.split(r"[ (,:]", method.strip(), maxsplit=1)[0]
+    """The simplydata word a method label starts with ("compare_averages_of (ANOVA)" -> compare_averages_of;
+    "chart lag_dots (rows_back=1)" -> lag_dots; "after use_survey_design (strata), ..." -> use_survey_design)."""
+    tokens = [x for x in re.split(r"[ (,:]", method.strip()) if x]
+    if len(tokens) > 1 and tokens[0] in ("chart", "after"):
+        return tokens[1]
+    return tokens[0] if tokens else ""
 
 
 def findings_sections() -> list[tuple[str, str]]:
@@ -300,6 +304,11 @@ def build(out: Path) -> None:
     def c(text) -> Paragraph:
         return Paragraph(escape(str(text)), cell)
 
+    head_cell = ParagraphStyle("head", parent=cell, fontName="Sans-Bold", fontSize=5.8, leading=7)
+
+    def h(text) -> Paragraph:
+        return Paragraph(escape(str(text)), head_cell)
+
     def num(value: str) -> str:
         """A stored number as it is, shortened to 12 significant digits for the table."""
         try:
@@ -363,7 +372,7 @@ def build(out: Path) -> None:
     toc.levelStyles = [ParagraphStyle("toc1", parent=body, fontName="Sans-Bold", fontSize=9.5, leftIndent=6 * mm,
                                       firstLineIndent=-6 * mm),
                        ParagraphStyle("toc2", parent=body, fontSize=8.5, leftIndent=12 * mm, firstLineIndent=-6 * mm)]
-    story += [p("Contents", h1), toc, PageBreak()]
+    story += [p("Contents", ParagraphStyle("contents", parent=h1)), toc, PageBreak()]
 
     # ---- 1. what was compared and how
     story.append(p("1. What was compared, and how", h1))
@@ -455,15 +464,15 @@ def build(out: Path) -> None:
         words = collections.OrderedDict()
         for r in rows:
             words.setdefault(word_of(r["method"]), []).append(r)
-        table = [[c("word"), c("comparisons"), c("certified"), c("printed"), c("program")] +
-                 [c(SHORT.get(l, l)) for l in shown]]
+        table = [[h("word"), h("compared"), h("certified"), h("printed"), h("program")] +
+                 [h(SHORT.get(l, l)) for l in shown]]
         for word, rs in words.items():
             k = collections.Counter(r.get("kind", "") for r in rs)
             lab = collections.Counter(r["result"] for r in rs)
             table.append([c(word), c(len(rs)), c(k.get("certified", 0)), c(k.get("printed", 0)),
                           c(k.get("run reference", 0))] + [c(lab.get(l, 0)) for l in shown])
-        wl = (162 - 44 - 16 - 13 * 3) / len(shown)
-        story.append(grid(table, widths=[44 * mm, 16 * mm, 13 * mm, 13 * mm, 13 * mm] + [wl * mm] * len(shown),
+        wl = (166 - 40 - 14 - 13 * 3) / len(shown)
+        story.append(grid(table, widths=[40 * mm, 14 * mm, 13 * mm, 13 * mm, 13 * mm] + [wl * mm] * len(shown),
                           numeric_from=1))
 
     # ---- 5. explained differences by finding
@@ -490,7 +499,7 @@ def build(out: Path) -> None:
         story.append(p(f"{len(rows)} comparisons: " + "; ".join(f"{l} {k}" for l, k in labels.most_common()) + ".",
                        small))
         line = rows[0].get("explanation", "")
-        if line:
+        if line and line.strip().rstrip(".") != title.strip().rstrip("."):
             story.append(p(f"<b>In one line:</b> {md(line)}"))
         if pieces:
             story.append(p("Evidence (FINDINGS.md)", h3))
