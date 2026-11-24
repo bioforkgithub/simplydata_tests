@@ -1,6 +1,6 @@
 """Build the reliability report of simplydata_tests as one PDF, from the files in this repository.
 
-    python scripts/make_pdf_report.py                       # writes report/simplydata_reliability_report.pdf
+    python scripts/make_pdf_report.py                       # writes reports/simplydata_reliability_report.pdf
     python scripts/make_pdf_report.py --out somewhere.pdf
 
 It reads only what the notebooks left behind: results/NN_*.csv (every comparison and its label),
@@ -25,11 +25,12 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "report" / "simplydata_reliability_report.pdf"
+OUT = ROOT / "reports" / "simplydata_reliability_report.pdf"
 
 MOTTO = ("Learn basic Python, and simplydata takes you from your first table to sound statistics, in plain words, "
          "with its results checked against the field's standard tools.")
-SECOND_LINE = "A package that is easy for a beginner, honest with a reviewer, and safe for patient data, all at once."
+SECOND_LINE = ("simplydata is a package that is easy for a beginner, honest with a reviewer, and safe for sensitive "
+               "data, all at once.")
 
 # the labels of the column "result", in the order the tables show them, with what each means (our own words)
 LABELS = [

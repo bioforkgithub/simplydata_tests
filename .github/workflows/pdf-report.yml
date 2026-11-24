@@ -3,7 +3,7 @@ name: pdf-report
 # Build the PDF reliability report (scripts/make_pdf_report.py) from the stored results, FINDINGS.md and references,
 # and keep it as the artifact "reliability-report". Nothing is pushed from here: to update the committed copy,
 # download the artifact and commit it (README.md, "The PDF report"). The step "Is the committed PDF current?" says
-# whether report/simplydata_reliability_report.pdf already equals the new build (the same files give the same PDF).
+# whether reports/simplydata_reliability_report.pdf already equals the new build (the same files give the same PDF).
 on:
   pull_request:
     paths:
@@ -51,10 +51,10 @@ jobs:
 
       - name: Is the committed PDF current?
         run: |
-          if cmp -s build/simplydata_reliability_report.pdf report/simplydata_reliability_report.pdf; then
-            echo "The committed report/simplydata_reliability_report.pdf is current."
+          if cmp -s build/simplydata_reliability_report.pdf reports/simplydata_reliability_report.pdf; then
+            echo "The committed reports/simplydata_reliability_report.pdf is current."
           else
-            echo "::notice::report/simplydata_reliability_report.pdf differs from this build: download the artifact reliability-report and commit it."
+            echo "::notice::reports/simplydata_reliability_report.pdf differs from this build: download the artifact reliability-report and commit it."
           fi
 
       - name: Keep the PDF

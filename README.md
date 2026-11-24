@@ -321,7 +321,7 @@ output.
 
 ## The PDF report
 
-[report/simplydata_reliability_report.pdf](report/simplydata_reliability_report.pdf) puts the whole study in one
+[reports/simplydata_reliability_report.pdf](reports/simplydata_reliability_report.pdf) puts the whole study in one
 document, for the paper's supplement and an archived copy with a DOI: what was compared and how, the labels, the totals,
 a table for each notebook, every explained difference grouped by its finding with the evidence from FINDINGS.md and
 both numbers, the coverage of simplydata's words, how to rerun, and the package versions. It is built from the files of
@@ -332,8 +332,8 @@ The workflow `pdf-report` builds it on GitHub Actions whenever those files chang
 `reliability-report`; it does not push. To update the committed copy:
 
 ```
-gh run download <run id> -R bioforkgithub/simplydata_tests -n reliability-report -D report/
-git add report/simplydata_reliability_report.pdf && git commit -m "PDF report from run <run id>"
+gh run download <run id> -R bioforkgithub/simplydata_tests -n reliability-report -D reports/
+git add reports/simplydata_reliability_report.pdf && git commit -m "PDF report from run <run id>"
 ```
 
 ## Citation
