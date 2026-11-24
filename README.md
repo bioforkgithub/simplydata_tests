@@ -62,16 +62,16 @@ are those of the GitHub Actions run of the pull request (Ubuntu); the stored res
 
 ## What the comparisons found
 
-The results files as stored here (the pull request's run 45184089331 on GitHub Actions, every notebook with simplydata main
-[a5a8ff0](https://github.com/bioforkgithub/simplydata/commit/a5a8ff03fb5518e068e7552473b8f62d5092ebe8), 2026-11-23, fourth pass):
+The results files as stored here (the pull request's run 45443130321 on GitHub Actions, every notebook with simplydata main
+[3f0192b](https://github.com/bioforkgithub/simplydata/commit/3f0192b207f63836c505e4da99e0c2bc8b7cbd9e), 2026-11-24, fifth pass):
 
 | notebooks | comparisons | agrees | simplydata error – being fixed | explained difference – reference | explained difference – machine | explained difference – precision limit | difference not yet explained | waiting for word | skipped |
 |---|---|---|---|---|---|---|---|---|---|
 | 01 to 08 | 1884 | 1743 | 0 | 5 | 10 | 125 | 0 | 0 | 1 |
 | 09 to 17 | 2732 | 2689 | 0 | 20 | 1 | 22 | 0 | 0 | 0 |
 | 18 to 24 | 2368 | 2345 | 0 | 21 | 0 | 1 | 0 | 0 | 1 |
-| 25 to 32 | 19734 | 19491 | 0 | 18 | 7 | 218 | 0 | 0 | 0 |
-| all | 26718 | 26268 | 0 | 64 | 18 | 366 | 0 | 0 | 2 |
+| 25 to 32 | 19734 | 19487 | 0 | 18 | 11 | 218 | 0 | 0 | 0 |
+| all | 26718 | 26264 | 0 | 64 | 22 | 366 | 0 | 0 | 2 |
 
 **Fourth pass (simplydata main a5a8ff0).** The 29 rows left as "simplydata error – being fixed" turned out not to be
 simplydata errors, and none is left: the textbook Wald intervals of the attributable fractions against R epiR's, which
@@ -119,6 +119,11 @@ BoxBOD's far start, `arctan` in formulas); five points are worth fixing in simpl
 `explain`, two near-exact polynomial fits, the name of the attributable-fraction interval, the power for two percents,
 and R fits called with their default stopping rules); the rest are limits shared with the package underneath or
 references that are themselves less accurate. Every published value in notebooks 08 to 17 passes.
+
+**All notebooks, 01 to 32, fifth pass (GitHub Actions run 45443130321, 2026-11-24, simplydata main 3f0192b): 26,718
+comparisons, 26,264 agree, 0 simplydata error – being fixed, 64 explained difference – reference, 22 explained
+difference – machine, 366 explained difference – precision limit, 0 difference not yet explained, 0 waiting for word, 2
+skipped.** The same as the fourth pass but for 4 B25 rows (notebook 26) that move from agrees to machine on this runner.
 
 **All notebooks, 01 to 32, fourth pass (GitHub Actions run 45184089331, 2026-11-23, simplydata main a5a8ff0): 26,718
 comparisons, 26,268 agree, 0 simplydata error – being fixed, 64 explained difference – reference, 18 explained

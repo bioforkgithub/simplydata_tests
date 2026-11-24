@@ -1,7 +1,7 @@
 # The versions the notebooks were run with (see each notebook's first output).
 # R parts also need R itself (4.x) with its recommended packages (MASS, survival); see README.md.
-# simplydata main at commit a5a8ff0 (PR #42: the last words the "waiting for word" checks waited for; not yet released on PyPI)
-simplydata[r] @ git+https://github.com/bioforkgithub/simplydata@a5a8ff03fb5518e068e7552473b8f62d5092ebe8
+# simplydata main at commit 3f0192b (PR #56: the combined statistics PR; not yet released on PyPI)
+simplydata[r] @ git+https://github.com/bioforkgithub/simplydata@3f0192b207f63836c505e4da99e0c2bc8b7cbd9e
 numpy==2.5.5
 pandas==2.3.3
 scipy==1.18.1
