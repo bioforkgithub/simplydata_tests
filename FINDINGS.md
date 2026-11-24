@@ -868,3 +868,22 @@ explained difference – machine, 366 explained difference – precision limit, 
 for word, 2 skipped. Before (third pass, run 45169408948): 26,265 agree, 29 being fixed, 48 reference, 27 machine, 347
 precision limit. The 15 rows of C31 to C33 move to reference and the 14 Lanczos1 rows to precision limit; the B1 rows
 near the 6-digit line move between agree, machine and precision limit with the runner machine.
+
+## Fifth pass: the confirming rerun with simplydata main 3f0192b (PR #56), 2026-11-24
+
+The pin moved from a5a8ff0 to 3f0192b, the combined statistics pull request of simplydata (lesson fixes, a note about
+repeated rows after some statistics results, other names for some words, the renames of `turn_rows_into_columns` to
+`spread_into_columns` and `turn_columns_into_rows` to `gather_into_rows`, `in_sheet=`). `00_summary` now uses
+`spread_into_columns`; no other notebook used a renamed word. Every notebook ran again on GitHub Actions (the pull
+request's run 45443130321, AMD EPYC 9V74), and notebook 27 on windows-latest (run-windows 45443124789): no new FAIL.
+
+Every comparison keeps its label but 4: the cbpp model averages of `find_model_averages_of (outcome="yes or no",
+grouped_by="herd")` in notebook 26 (B25) move from agrees to machine on this runner, as B25 says they do; the
+simplydata values move by less than 1e-5 relative. The other changes of simplydata's values are in the last digits
+(at most 4e-12 relative). The run references were made again with the R packages of the day (survival 3.8.13,
+segmented 2.3.0 among them); their values moved in the last digits only, and no label changed.
+
+**Totals of the fifth pass** (simplydata 3f0192b, GitHub Actions run 45443130321 of the pull request; notebooks 01 to
+32): 26,718 comparisons, 26,264 agree, 0 simplydata error – being fixed, 64 explained difference – reference, 22
+explained difference – machine, 366 explained difference – precision limit, 0 difference not yet explained, 0 waiting
+for word, 2 skipped.

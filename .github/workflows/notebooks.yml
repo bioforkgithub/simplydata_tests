@@ -13,6 +13,10 @@ on:
   schedule:
     - cron: "0 5 * * 1"   # Mondays, to notice changes in the packages underneath
 
+permissions:
+  contents: read
+  issues: write  # only for the weekly warning issue (the last step)
+
 jobs:
   run-notebooks:
     runs-on: ubuntu-latest
@@ -113,7 +117,10 @@ jobs:
         run: python tests/test_checks.py
 
       - name: Run all notebooks (fails on a notebook error or a new, unexplained FAIL)
-        run: python scripts/run_notebooks.py
+        shell: bash
+        run: |
+          set -o pipefail
+          python scripts/run_notebooks.py 2>&1 | tee run_notebooks.log
 
       - name: Keep the executed notebooks and results
         if: always()
@@ -124,3 +131,38 @@ jobs:
             notebooks/*.ipynb
             results/*.csv
             references/*.csv
+
+      # On a failed Monday run only: open one issue, or update it if it is open already, with the new FAILs
+      # (the "NEW FAILs" table of scripts/run_notebooks.py) and the notebooks that stopped with an error.
+      - name: Open or update the weekly warning issue
+        if: failure() && github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const log = fs.existsSync('run_notebooks.log') ? fs.readFileSync('run_notebooks.log', 'utf8') : '';
+            const lines = log.split('\n');
+            const start = lines.findIndex(l => l.startsWith('NEW FAILs'));
+            let newFails = start >= 0 ? lines.slice(start).join('\n').trim() : '(no new FAILs listed)';
+            if (newFails.length > 50000) newFails = newFails.slice(0, 50000) + '\n... (cut; see the run log)';
+            const errors = lines.filter(l => l.startsWith('ERROR')).join('\n') || '(none)';
+            const summary = lines.find(l => / comparisons: /.test(l)) || '';
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `The weekly notebook run on ${new Date().toISOString().slice(0, 10)} failed.`,
+              `Run: ${run}`, '', summary, '', '**New FAILs**', '```', newFails, '```', '',
+              '**Notebooks or steps that stopped with an error**', '```', errors, '```', '',
+              'Explain each new FAIL in FINDINGS.md (and results/known_fails.csv) or fix it in simplydata.',
+            ].join('\n');
+            const title = 'Weekly notebook run found new differences';
+            const open = await github.paginate(github.rest.issues.listForRepo,
+              { owner: context.repo.owner, repo: context.repo.repo, state: 'open', per_page: 100 });
+            const issue = open.find(i => i.title === title && !i.pull_request);
+            if (issue) {
+              await github.rest.issues.update({ owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issue.number, body });
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issue.number, body: `Failed again: ${run} (the issue text is updated).` });
+            } else {
+              await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body });
+            }
